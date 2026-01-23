@@ -1,0 +1,84 @@
+
+name: Deploy Tetris to ECS Fargate
+
+on:
+  push:
+    branches:
+      - main
+
+# OIDC
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: tetris-web-repo
+  ECS_CLUSTER: tetris-web-cluster
+  ECS_SERVICE: tetris-web-web-service
+  ECS_TASK_DEFINITION: task-definition.json # Task Definition을 저장할 임시 파일
+  CONTAINER_NAME: tetris-web-container
+
+jobs:
+  deploy:
+    name: Build, Scan & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Prisma Cloud IaC Scan
+      uses: prisma/prisma-cloud-iac-scan-action@v1
+      with:
+        # GitHub Repository Secrets KEY 설정
+        prisma_api_url: ${{ secrets.PRISMA_API_URL }}
+        access_key: ${{ secrets.PRISMA_ACCESS_KEY }}
+        secret_key: ${{ secrets.PRISMA_SECRET_KEY }}
+        template_type: "terraform"
+        template_file: "./terraform" # 테라폼 코드 폴더
+        # fail_on_failure: true ## true로 설정 시, 스캔 실패 시 워크플로우 중단
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        # GitHub Actions를 위한 IAM Role ARN. 다음 단계에서 Terraform으로 생성할 예정입니다.
+        role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Dockerfile이 있는 경로에서 실행해야 합니다. (루트 경로에 Dockerfile 가정)
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+    - name: Download task definition
+      run: |
+        aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} --query taskDefinition > ${{ env.ECS_TASK_DEFINITION }}
+      env:
+        ECS_TASK_DEFINITION_FAMILY: ${{ env.ECS_CLUSTER }}-web-app # Terraform에서 정의한 family 이름
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ${{ env.ECS_TASK_DEFINITION }}
+        container-name: ${{ env.CONTAINER_NAME }}
+        image: ${{ steps.build-image.outputs.image }}
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
