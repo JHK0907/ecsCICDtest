@@ -1,6 +1,12 @@
  # terraform/variables.tf
 
- variable "aws_region" {
+ variable "name_prefix" {
+  description = "모든 리소스 이름에 사용할 접두사"
+  type        = string
+  default     = "hkjung"
+}
+
+variable "aws_region" {
    description = "배포를 위한 AWS 리전"
    type        = string
    default     = "ap-northeast-2" # 서울 리전

@@ -7,7 +7,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "${var.project_name}-vpc"
+    Name = "${var.name_prefix}-${var.project_name}-vpc"
   }
 }
 
@@ -24,7 +24,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true // Fargate Task에 Public IP를 자동 할당하기 위해 필수!
 
   tags = {
-    Name = "${var.project_name}-public-subnet-${count.index + 1}"
+    Name = "${var.name_prefix}-${var.project_name}-public-subnet-${count.index + 1}"
   }
 }
 
@@ -32,7 +32,7 @@ resource "aws_subnet" "public" {
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
   tags = {
-    Name = "${var.project_name}-igw"
+    Name = "${var.name_prefix}-${var.project_name}-igw"
   }
 }
 
@@ -46,7 +46,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "${var.project_name}-public-rt"
+    Name = "${var.name_prefix}-${var.project_name}-public-rt"
   }
 }
 
@@ -59,7 +59,7 @@ resource "aws_route_table_association" "public" {
 
 # 6. ECS Fargate Task를 위한 Security Group 생성
 resource "aws_security_group" "fargate_sg" {
-  name        = "${var.project_name}-fargate-sg"
+  name        = "${var.name_prefix}-${var.project_name}-fargate-sg"
   description = "Allow HTTP inbound traffic for Fargate tasks"
   vpc_id      = aws_vpc.main.id
 
@@ -80,6 +80,6 @@ resource "aws_security_group" "fargate_sg" {
   }
 
   tags = {
-    Name = "${var.project_name}-fargate-sg"
+    Name = "${var.name_prefix}-${var.project_name}-fargate-sg"
   }
 }

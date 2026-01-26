@@ -2,17 +2,17 @@
 
 # 1. ECS 클러스터 생성
 resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
+  name = "${var.name_prefix}-${var.project_name}-cluster"
 
   tags = {
-    Name = "${var.project_name}-cluster"
+    Name = "${var.name_prefix}-${var.project_name}-cluster"
   }
 }
 
 # 2. Fargate Task 실행을 위한 IAM Role 생성
 #    Task가 ECR에서 이미지를 PULL하고 CloudWatch에 로그를 보낼 수 있는 권한.
 resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "${var.project_name}-ecs-task-execution-role"
+  name = "${var.name_prefix}-${var.project_name}-ecs-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version   = "2012-10-17",
@@ -28,7 +28,7 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 
   tags = {
-    Name = "${var.project_name}-ecs-task-execution-role"
+    Name = "${var.name_prefix}-${var.project_name}-ecs-task-execution-role"
   }
 }
 
@@ -43,7 +43,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
 #    - image는 나중에 GitHub Actions에서 빌드하고 ECR에 푸시한 이미지 주소로 변경될 예정입니다.
 #      (지금은 임시로 public 예제 이미지를 사용)
 resource "aws_ecs_task_definition" "web_app" {
-  family                   = "${var.project_name}-web-app"
+  family                   = "${var.name_prefix}-${var.project_name}-web-app"
   network_mode             = "awsvpc" # Fargate는 awsvpc 모드만 지원
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"  # 0.25 vCPU (최소 단위)
@@ -53,7 +53,7 @@ resource "aws_ecs_task_definition" "web_app" {
   # 실제 컨테이너 정의
   container_definitions = jsonencode([
     {
-      name      = "${var.project_name}-container"
+      name      = "${var.name_prefix}-${var.project_name}-container"
       image     = "nginxdemos/hello:latest" # 나중에 우리 테트리스 앱 이미지로 교체
       cpu       = 256
       memory    = 512
@@ -76,16 +76,16 @@ resource "aws_ecs_task_definition" "web_app" {
   ])
 
   tags = {
-    Name = "${var.project_name}-web-app-td"
+    Name = "${var.name_prefix}-${var.project_name}-web-app-td"
   }
 }
 
 # 4. ECS Service를 위한 CloudWatch Log Group 생성
 resource "aws_cloudwatch_log_group" "web_app" {
-  name = "/ecs/${var.project_name}-web-app"
+  name = "/ecs/${var.name_prefix}-${var.project_name}-web-app"
 
   tags = {
-    Name = "${var.project_name}-log-group"
+    Name = "${var.name_prefix}-${var.project_name}-log-group"
   }
 }
 
@@ -93,7 +93,7 @@ resource "aws_cloudwatch_log_group" "web_app" {
 # 5. ECS Service 생성
 #    - Task Definition을 기반으로 실제 컨테이너(Task)를 몇 개 실행하고 어떻게 관리할지 정의합니다.
 resource "aws_ecs_service" "web_app" {
-  name            = "${var.project_name}-web-service"
+  name            = "${var.name_prefix}-${var.project_name}-web-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.web_app.arn
   desired_count   = 1 # 우선 1개의 Task만 실행
@@ -117,13 +117,13 @@ resource "aws_ecs_service" "web_app" {
   }
 
   tags = {
-    Name = "${var.project_name}-web-service"
+    Name = "${var.name_prefix}-${var.project_name}-web-service"
   }
 }
 
 # 6. Docker 이미지를 저장할 ECR(Elastic Container Registry) 생성
 resource "aws_ecr_repository" "web_app" {
-  name                 = "${var.project_name}-repo"
+  name                 = "${var.name_prefix}-${var.project_name}-repo"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -131,6 +131,6 @@ resource "aws_ecr_repository" "web_app" {
   }
 
   tags = {
-    Name = "${var.project_name}-repo"
+    Name = "${var.name_prefix}-${var.project_name}-repo"
   }
 }

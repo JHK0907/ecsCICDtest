@@ -14,13 +14,13 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = ["6938fd48ead637b5ddf9e0481287042340443974"] 
 
   tags = {
-    Name = "${var.project_name}-github-oidc-provider"
+    Name = "${var.name_prefix}-${var.project_name}-github-oidc-provider"
   }
 }
 
 # GitHub Actions가 Assume Role할 IAM Role 생성
 resource "aws_iam_role" "github_actions_deployer" {
-  name = "${var.project_name}-github-actions-deployer"
+  name = "${var.name_prefix}-${var.project_name}-github-actions-deployer"
 
   # 이 Role을 누가 Assume할 수 있는지 정의하는 Trust Policy (신뢰 정책)
   assume_role_policy = jsonencode({
@@ -48,14 +48,14 @@ resource "aws_iam_role" "github_actions_deployer" {
   })
 
   tags = {
-    Name = "${var.project_name}-github-actions-deployer"
+    Name = "${var.name_prefix}-${var.project_name}-github-actions-deployer"
   }
 }
 
 # GitHub Actions Role에 연결할 권한 정책 정의
 # ECR 이미지 푸시, ECS 서비스 업데이트, CloudWatch 로그 기록 권한 포함
 resource "aws_iam_role_policy" "github_actions_policy" {
-  name = "${var.project_name}-github-actions-policy"
+  name = "${var.name_prefix}-${var.project_name}-github-actions-policy"
   role = aws_iam_role.github_actions_deployer.id
 
   policy = jsonencode({
@@ -98,7 +98,7 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ],
-        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.project_name}-web-app:*"
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.name_prefix}-${var.project_name}-web-app:*"
       }
     ]
   })
