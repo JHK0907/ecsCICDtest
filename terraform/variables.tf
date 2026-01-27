@@ -46,7 +46,7 @@ variable "aws_region" {
 
    # !!! 여기에 실제 GitHub 조직/사용자 이름을 입력하세요. !!!
 
-   default     = "hkjung-ux"
+   default     = "JHK0907"
 
  }
 
