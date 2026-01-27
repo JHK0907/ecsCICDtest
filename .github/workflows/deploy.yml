@@ -34,10 +34,10 @@ jobs:
       env:
         PRISMA_API_URL: ${{ secrets.PRISMA_API_URL }}
         BC_API_KEY: ${{ secrets.BC_API_KEY }}
+        BC_REPO_ID: ${{ github.repository }} # 환경 변수로 repo-id 전달
       with:
         directory: ./terraform
         soft_fail: true # Checkov 스캔 실패 시에도 워크플로우를 계속 진행
-        repo-id: ${{ github.repository }} # 플랫폼 API 키 사용 시 필수
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
