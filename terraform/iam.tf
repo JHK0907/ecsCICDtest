@@ -90,15 +90,21 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "ecs:RegisterTaskDefinition",
           "ecs:DeregisterTaskDefinition",
           "ecs:DescribeTaskDefinition",
-          "ecs:ListTaskDefinitions",
+          "ecs:ListTaskDefinitions"
+        ],
+        Resource = "*" # 태스크 정의 관련 액션은 "*"으로 설정
+      },
+      # ECS Service / Cluster 관련 액션
+      {
+        Effect = "Allow",
+        Action = [
           "ecs:DescribeServices",
           "ecs:UpdateService",
           "ecs:DescribeClusters"
         ],
         Resource = [
           aws_ecs_cluster.main.arn,
-          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web_app.name}", # ECS Service ARN 구성
-          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/${var.project_name}-web-app:*"
+          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web_app.name}"
         ]
       },
       {
@@ -110,7 +116,7 @@ resource "aws_iam_role_policy" "github_actions_policy" {
         ],
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.project_name}-web-app:*"
       },
-      # PassRole is required to pass the task execution role to the ECS task.
+      # PassRole is required to pass the task execution role to the ECS task..
       {
         "Effect": "Allow",
         "Action": [
