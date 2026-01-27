@@ -29,7 +29,8 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Prisma Cloud IaC Scan
+    - name: run prisma cloud iac scan
+      id: TW-hkjung-CICD-Run
       uses: prisma/prisma-cloud-iac-scan-action@v1
       with:
         # GitHub Repository Secrets KEY 설정
