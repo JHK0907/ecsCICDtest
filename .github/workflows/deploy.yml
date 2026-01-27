@@ -31,7 +31,7 @@ jobs:
 
     - name: run prisma cloud iac scan
       id: TW-hkjung-CICD-Run
-      uses: prisma/prisma-cloud-iac-scan-action@v1
+      uses: Bridgecrew/bridgecrew-action@master
       with:
         # GitHub Repository Secrets KEY 설정
         prisma_api_url: ${{ secrets.PRISMA_API_URL }}
