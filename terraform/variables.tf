@@ -46,7 +46,7 @@ variable "aws_region" {
 
    # !!! 여기에 실제 GitHub 조직/사용자 이름을 입력하세요. !!!
 
-   default     = "YOUR_GITHUB_REPO_OWNER"
+   default     = "hkjung-ux"
 
  }
 
@@ -60,7 +60,7 @@ variable "aws_region" {
 
    # !!! 여기에 실제 GitHub 리포지토리 이름을 입력하세요. !!!
 
-   default     = "YOUR_GITHUB_REPO_NAME"
+   default     = "ecsCICDtest"
 
  }
 
