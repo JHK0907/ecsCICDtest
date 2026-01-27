@@ -65,18 +65,20 @@ resource "aws_security_group" "fargate_sg" {
 
   # 웹 서비스 접근을 위한 Ingress (HTTP Port 80)
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "Allow HTTP from anywhere"
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
   }
   
   # 인터넷 통신을 위한 Egress (컨테이너 이미지 pull 등)
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1" # 모든 프로토콜
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "Allow all outbound traffic"
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1" # 모든 프로토콜
+    cidr_blocks      = ["0.0.0.0/0"]
   }
 
   tags = {

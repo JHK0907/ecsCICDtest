@@ -58,6 +58,7 @@ resource "aws_ecs_task_definition" "web_app" {
       cpu       = 256
       memory    = 512
       essential = true
+      readonlyRootFilesystem = true
       portMappings = [
         {
           containerPort = 80
@@ -83,6 +84,7 @@ resource "aws_ecs_task_definition" "web_app" {
 # 4. ECS Service를 위한 CloudWatch Log Group 생성
 resource "aws_cloudwatch_log_group" "web_app" {
   name = "/ecs/${var.name_prefix}-${var.project_name}-web-app"
+  retention_in_days = 30
 
   tags = {
     Name = "${var.name_prefix}-${var.project_name}-log-group"
@@ -124,7 +126,7 @@ resource "aws_ecs_service" "web_app" {
 # 6. Docker 이미지를 저장할 ECR(Elastic Container Registry) 생성
 resource "aws_ecr_repository" "web_app" {
   name                 = "${var.name_prefix}-${var.project_name}-repo"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true

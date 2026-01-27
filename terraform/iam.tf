@@ -76,7 +76,7 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "ecr:ListImages",
           "ecr:DescribeImages"
         ],
-        Resource = "*" # ECR은 리포지토리 ARN으로 세분화 가능하지만, 여기서는 편의상 * 사용. 보안 강화 시 세분화 권장
+        Resource = aws_ecr_repository.web_app.arn
       },
       {
         Effect = "Allow",
@@ -87,9 +87,13 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "ecs:ListTaskDefinitions",
           "ecs:DescribeServices",
           "ecs:UpdateService",
-          "ecs:DescribeClusters" # DescribeCluster 추가 (혹시 필요할 수 있으니)
+          "ecs:DescribeClusters"
         ],
-        Resource = "*" # ECS 또한 서비스 ARN으로 세분화 가능하지만, 여기서는 편의상 * 사용. 보안 강화 시 세분화 권장
+        Resource = [
+          aws_ecs_cluster.main.arn,
+          aws_ecs_service.web_app.id,
+          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/${var.project_name}-web-app:*"
+        ]
       },
       {
         Effect = "Allow",
@@ -98,7 +102,17 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ],
-        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.name_prefix}-${var.project_name}-web-app:*"
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.project_name}-web-app:*"
+      },
+      # PassRole is required to pass the task execution role to the ECS task.
+      {
+        "Effect": "Allow",
+        "Action": [
+            "iam:PassRole"
+        ],
+        "Resource": [
+            aws_iam_role.ecs_task_execution_role.arn
+        ]
       }
     ]
   })
