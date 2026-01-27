@@ -84,7 +84,7 @@ resource "aws_ecs_task_definition" "web_app" {
 # 4. ECS Service를 위한 CloudWatch Log Group 생성
 resource "aws_cloudwatch_log_group" "web_app" {
   name = "/ecs/${var.name_prefix}-${var.project_name}-web-app"
-  retention_in_days = 30
+  retention_in_days = 365
 
   tags = {
     Name = "${var.name_prefix}-${var.project_name}-log-group"
