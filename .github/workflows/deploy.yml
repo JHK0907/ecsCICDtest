@@ -36,7 +36,7 @@ jobs:
         BC_API_KEY: ${{ secrets.BC_API_KEY }}
       with:
         directory: ./terraform
-        # fail_on_failure: true # Uncomment to fail the build on security issues
+        fail_on_failure: false # Checkov 스캔 실패 시에도 워크플로우를 계속 진행
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
