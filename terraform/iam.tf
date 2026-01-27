@@ -64,6 +64,13 @@ resource "aws_iam_role_policy" "github_actions_policy" {
       {
         Effect = "Allow",
         Action = [
+          "ecr:GetAuthorizationToken"
+        ],
+        Resource = "*" # ECR 로그인 토큰 발급은 계정 전체 권한이 필요
+      },
+      {
+        Effect = "Allow",
+        Action = [
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
           "ecr:BatchCheckLayerAvailability",
@@ -71,12 +78,11 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
-          "ecr:GetAuthorizationToken",
           "ecr:DescribeRepositories",
           "ecr:ListImages",
           "ecr:DescribeImages"
         ],
-        Resource = aws_ecr_repository.web_app.arn
+        Resource = aws_ecr_repository.web_app.arn # 나머지 ECR 작업은 특정 리포지토리 권한
       },
       {
         Effect = "Allow",
