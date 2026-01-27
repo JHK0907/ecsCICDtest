@@ -67,12 +67,23 @@ jobs:
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+    
+    - name: Get current task definition ARN from ECS service
+      id: get-task-def
+      run: |
+        TASK_DEF_ARN=$(aws ecs describe-services \
+        --cluster ${{ env.ECS_CLUSTER }} \
+        --services ${{ env.ECS_SERVICE }} \
+        --query "services[0].taskDefinition" \
+        --output text)
+
+        echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
+  
+
 
     - name: Download task definition
       run: |
         aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} --query taskDefinition > ${{ env.ECS_TASK_DEFINITION }}
-      env:
-        ECS_TASK_DEFINITION_FAMILY: "${{ env.name_prefix }}-${{ env.project_name }}-web-app" # Terraform에서 정의한 family 이름과 일치
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
