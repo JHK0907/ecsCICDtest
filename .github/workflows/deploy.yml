@@ -72,7 +72,7 @@ jobs:
       run: |
         aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} --query taskDefinition > ${{ env.ECS_TASK_DEFINITION }}
       env:
-        ECS_TASK_DEFINITION_FAMILY: "${{ var.name_prefix }}-${{ var.project_name }}-web-app" # Terraform에서 정의한 family 이름과 일치
+        ECS_TASK_DEFINITION_FAMILY: "${{ env.name_prefix }}-${{ env.project_name }}-web-app" # Terraform에서 정의한 family 이름과 일치
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
