@@ -97,7 +97,7 @@ resource "aws_iam_role_policy" "github_actions_policy" {
         ],
         Resource = [
           aws_ecs_cluster.main.arn,
-          aws_ecs_service.web_app.id,
+          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web_app.name}", # ECS Service ARN 구성
           "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/${var.project_name}-web-app:*"
         ]
       },
