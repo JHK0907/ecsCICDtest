@@ -29,15 +29,14 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Run Bridgecrew (Prisma Cloud) IaC Scan
-      uses: bridgecrewio/bridgecrew-action@master
+    - name: Run Checkov IaC Scan
+      uses: bridgecrewio/checkov-action@master
       env:
         PRISMA_API_URL: ${{ secrets.PRISMA_API_URL }}
         BC_API_KEY: ${{ secrets.BC_API_KEY }}
       with:
         directory: ./terraform
         soft_fail: true # Checkov 스캔 실패 시에도 워크플로우를 계속 진행
-        repo_id: ${{ github.repository }} # 리포지토리 ID를 액션 입력으로 전달 (언더스코어 사용)
 
 
     - name: Configure AWS credentials
