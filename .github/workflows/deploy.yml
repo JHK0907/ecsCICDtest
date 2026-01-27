@@ -35,8 +35,7 @@ jobs:
         PRISMA_API_URL: ${{ secrets.PRISMA_API_URL }}
         BC_API_KEY: ${{ secrets.BC_API_KEY }}
       with:
-        directory: ./terraform
-        soft_fail: true # Checkov 스캔 실패 시에도 워크플로우를 계속 진행
+        args: --directory ./terraform --soft-fail --repo-id ${{ github.repository }} # Checkov CLI에 직접 인자 전달
 
 
     - name: Configure AWS credentials
