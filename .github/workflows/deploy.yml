@@ -29,17 +29,14 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: run prisma cloud iac scan
-      id: TW-hkjung-CICD-Run
+    - name: Run Bridgecrew (Prisma Cloud) IaC Scan
       uses: Bridgecrew/bridgecrew-action@master
+      env:
+        PRISMA_API_URL: ${{ secrets.PRISMA_API_URL }}
+        BC_API_KEY: ${{ secrets.BC_API_KEY }}
       with:
-        # GitHub Repository Secrets KEY 설정
-        prisma_api_url: ${{ secrets.PRISMA_API_URL }}
-        access_key: ${{ secrets.PRISMA_ACCESS_KEY }}
-        secret_key: ${{ secrets.PRISMA_SECRET_KEY }}
-        template_type: "terraform"
-        template_file: "./terraform" # 테라폼 코드 폴더
-        # fail_on_failure: true ## true로 설정 시, 스캔 실패 시 워크플로우 중단
+        directory: ./terraform
+        # fail_on_failure: true # Uncomment to fail the build on security issues
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
