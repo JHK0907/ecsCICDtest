@@ -37,7 +37,7 @@ jobs:
       with:
         directory: ./terraform
         soft_fail: true # Checkov 스캔 실패 시에도 워크플로우를 계속 진행
-        args: --repo-id ${{ github.repository }} # bridgecrew CLI에 직접 repo-id 인자 전달
+        repo-id: ${{ github.repository }} # 리포지토리 ID를 액션 입력으로 전달
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
