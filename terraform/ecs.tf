@@ -58,7 +58,7 @@ resource "aws_ecs_task_definition" "web_app" {
       cpu       = 256
       memory    = 512
       essential = true
-      readonlyRootFilesystem = true
+      readonlyRootFilesystem = false
       portMappings = [
         {
           containerPort = 80
