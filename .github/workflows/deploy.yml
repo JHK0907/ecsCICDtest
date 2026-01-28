@@ -47,7 +47,7 @@ jobs:
 
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         # GitHub Actions를 위한 IAM Role ARN. 다음 단계에서 Terraform으로 생성할 예정입니다.
         role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
@@ -94,7 +94,7 @@ jobs:
         image: ${{ steps.build-image.outputs.image }}
 
     - name: Deploy Amazon ECS task definition
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v2
       with:
         task-definition: ${{ steps.task-def.outputs.task-definition }}
         service: ${{ env.ECS_SERVICE }}
