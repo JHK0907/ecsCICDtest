@@ -61,7 +61,7 @@ jobs:
       id: build-image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
+        IMAGE_TAG: ${{ github.sha }}-${{ github.run_number }}
       run: |
         # Dockerfile이 있는 경로에서 실행해야 합니다. (루트 경로에 Dockerfile 가정)
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
