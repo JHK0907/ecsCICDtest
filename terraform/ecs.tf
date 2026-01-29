@@ -38,33 +38,61 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# 3. ECS Task Definition 정의
-#    - 어떤 Docker 이미지를 사용할지, CPU/Memory, 포트 매핑 등을 정의합니다.
-#    - image는 나중에 GitHub Actions에서 빌드하고 ECR에 푸시한 이미지 주소로 변경될 예정입니다.
-#      (지금은 임시로 public 예제 이미지를 사용)
+# 3. ECS Task Definition 정의 (Prisma Cloud Defender Embedded)
+#    - Prisma Cloud Defender가 주입된 Docker 이미지를 사용하도록 Task Definition을 수정합니다.
 resource "aws_ecs_task_definition" "web_app" {
   family                   = "${var.name_prefix}-${var.project_name}-web-app"
   network_mode             = "awsvpc" # Fargate는 awsvpc 모드만 지원
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"  # 0.25 vCPU (최소 단위)
-  memory                   = "512"  # 0.5 GB (최소 단위)
+  cpu                      = "512"  # Defender 실행을 위해 CPU/Memory 상향 권장
+  memory                   = "1024" # 
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   
   # 실제 컨테이너 정의
   container_definitions = jsonencode([
     {
       name      = "${var.name_prefix}-${var.project_name}-container"
-      image     = "nginxdemos/hello:latest" # 나중에 우리 테트리스 앱 이미지로 교체
-      cpu       = 256
-      memory    = 512
+      # ECR 리포지토리 URL과 태그를 사용하도록 수정
+      image     = "${aws_ecr_repository.web_app.repository_url}:latest-protected"
+      cpu       = 512
+      memory    = 1024
       essential = true
-      readonlyRootFilesystem = false
       portMappings = [
         {
           containerPort = 80
           hostPort      = 80
         }
       ]
+      
+      # EntryPoint 변경: Defender가 원래 EntryPoint를 래핑
+      # Dockerfile의 CMD ["nginx", "-g", "daemon off;"] 를 반영
+      entryPoint = [
+        "/var/lib/twistlock/fargate/defender",
+        "nginx", 
+        "-g", 
+        "daemon off;"
+      ]
+
+      # Linux Parameters: SYS_PTRACE 기능 추가
+      linuxParameters = {
+        capabilities = {
+          add = ["SYS_PTRACE"]
+        }
+      }
+
+      # 환경 변수: Prisma Defender 필수 환경 변수 주입
+      environment = [
+        {
+          name  = "WS_ADDRESS"
+          # 중요: 콘솔 주소를 wss:// 프로토콜로 변경해야 합니다.
+          value = replace(var.prisma_console_url, "https", "wss")
+        },
+        {
+          name  = "DEFENDER_TYPE"
+          value = "fargate"
+        }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs",
         options = {

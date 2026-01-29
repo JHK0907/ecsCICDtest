@@ -1,102 +1,97 @@
-
-name: Deploy Tetris to ECS Fargate
+# .github/workflows/deploy.yml
+name: Build, Embed Defender, and Deploy to ECR
 
 on:
   push:
     branches:
       - main
 
-# OIDC
-permissions:
-  id-token: write
-  contents: read
-
+# 환경 변수 설정
 env:
-  AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: hkjung-tetris-web-repo
-  ECS_CLUSTER: hkjung-tetris-web-cluster
-  ECS_SERVICE: hkjung-tetris-web-web-service
-  ECS_TASK_DEFINITION: task-definition.json
-  CONTAINER_NAME: hkjung-tetris-web-container
-  ECS_TASK_DEFINITION_FAMILY: hkjung-tetris-web-web-app 
+  # terraform/variables.tf 와 일관성 유지
+  AWS_REGION: "ap-northeast-2" 
+  # terraform/ecs.tf 에 정의된 리포지토리 이름 형식과 일치시킴
+  ECR_REPOSITORY: "hkjung-tetris-web-repo" 
+  IMAGE_BASE_NAME: "tetris-web"
 
 jobs:
-  deploy:
-    name: Build, Scan & Deploy
+  build-and-push:
+    name: Build, Embed, and Push
     runs-on: ubuntu-latest
+    
+    # GitHub OIDC를 사용하여 AWS에 인증
+    permissions:
+      id-token: write 
+      contents: read
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Run Checkov IaC Scan (Direct Docker Command)
-      env:
-        PRISMA_API_URL: ${{ secrets.PRISMA_API_URL }}
-        PRISMA_API_KEY: ${{ secrets.BC_API_KEY }}
-        BC_REPO_ID: ${{ github.repository }} # 직접 실행 시 환경 변수로 전달
-      run: |
-        docker run --rm \
-          -e PRISMA_API_KEY="${{ env.PRISMA_API_KEY }}" \
-          -e PRISMA_API_URL="${{ env.PRISMA_API_URL }}" \
-          -v ${{ github.workspace }}:/app \
-          bridgecrew/checkov:latest \
-          --directory /app/terraform \
-          --soft-fail \
-          --repo-id ${{ github.repository }} \
-          --output sarif
+      - name: Configure AWS credentials from GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # IAM OIDC 설정 후 생성된 Role ARN을 GitHub Secret으로 등록하여 사용하세요.
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_FOR_GITHUB_ACTIONS }}
+          aws-region: ${{ env.AWS_REGION }}
 
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        # GitHub Actions를 위한 IAM Role ARN. 다음 단계에서 Terraform으로 생성할 예정입니다.
-        role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
-        aws-region: ${{ env.AWS_REGION }}
+      # Step 1: GitHub Actions 환경 설정 (twistcli 다운로드)
+      - name: Download and prepare twistcli
+        env:
+          PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
+          PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
+          PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
+        run: |
+          echo "Downloading twistcli from Prisma Cloud Console..."
+          # 콘솔 URL에서 twistcli 다운로드 (linux 버전)
+          # 먼저 인증 토큰을 받고, 그 토큰을 사용하여 twistcli를 다운로드합니다.
+          AUTH_TOKEN=$(curl -k -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$PRISMA_CONSOLE_URL/api/v1/authenticate" | jq -r .token) 
+          
+          curl -k --header "Authorization: Bearer $AUTH_TOKEN" \
+               "$PRISMA_CONSOLE_URL/api/v1/util/twistcli" --output twistcli
+          
+          chmod +x twistcli
+          echo "twistcli downloaded and is executable."
+          ./twistcli --version
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      # Step 2: 이미지 빌드 및 Defender 주입 (The "Embed" Step)
+      - name: Build base Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_BASE_NAME }}:latest .
 
-    - name: Build, tag, and push image to Amazon ECR
-      id: build-image
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}-${{ github.run_number }}
-      run: |
-        # Dockerfile이 있는 경로에서 실행해야 합니다. (루트 경로에 Dockerfile 가정)
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-    
-    - name: Get current task definition ARN from ECS service
-      id: get-task-def
-      run: |
-        TASK_DEF_ARN=$(aws ecs describe-services \
-        --cluster ${{ env.ECS_CLUSTER }} \
-        --services ${{ env.ECS_SERVICE }} \
-        --query "services[0].taskDefinition" \
-        --output text)
+      - name: Embed Defender into the image using twistcli
+        env:
+          PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
+          PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
+          PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
+        run: |
+          echo "Embedding Fargate Defender..."
+          ./twistcli app-embedded embed \
+            --app-id ${{ env.ECR_REPOSITORY }} \
+            --data-folder /tmp \
+            --image-name ${{ env.IMAGE_BASE_NAME }}:latest \
+            --output-image ${{ env.IMAGE_BASE_NAME }}:protected \
+            --address $PRISMA_CONSOLE_URL \
+            --user $PRISMA_ACCESS_KEY \
+            --password $PRISMA_SECRET_KEY
+          echo "Embedding complete. New image is ${{ env.IMAGE_BASE_NAME }}:protected"
 
-        echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
-  
-
-
-    - name: Download task definition
-      run: |
-        aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} --query taskDefinition > ${{ env.ECS_TASK_DEFINITION }}
-
-    - name: Fill in the new image ID in the Amazon ECS task definition
-      id: task-def
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
-      with:
-        task-definition: ${{ env.ECS_TASK_DEFINITION }}
-        container-name: ${{ env.CONTAINER_NAME }}
-        image: ${{ steps.build-image.outputs.image }}
-
-    - name: Deploy Amazon ECS task definition
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-      with:
-        task-definition: ${{ steps.task-def.outputs.task-definition }}
-        service: ${{ env.ECS_SERVICE }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
+      # Step 3: ECR 푸시 (Push Protected Image)
+      - name: Tag and push protected image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          # 이미지 태그 전략: 'protected-{commit-sha}' 및 'latest-protected'
+          docker tag ${{ env.IMAGE_BASE_NAME }}:protected $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH
+          docker tag ${{ env.IMAGE_BASE_NAME }}:protected $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected
+          
+          echo "Pushing image $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH"
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH
+          
+          echo "Pushing image $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected"
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected

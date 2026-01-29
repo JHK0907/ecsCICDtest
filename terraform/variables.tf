@@ -65,3 +65,16 @@ variable "aws_region" {
  }
 
  
+variable "prisma_console_url" {
+  description = "Prisma Cloud 콘솔 주소 (e.g., https://app.prismacloud.io)"
+  type        = string
+  # !!! GitHub Secret 또는 Terraform 변수 파일(.tfvars)을 통해 실제 콘솔 주소를 입력하세요. !!!
+  default     = ""
+}
+
+variable "ecr_repository_url" {
+  description = "배포할 이미지가 저장된 ECR 리포지토리의 URL"
+  type        = string
+  # !!! GitHub Secret 또는 Terraform 변수 파일(.tfvars)을 통해 실제 ECR URL을 입력하세요. !!!
+  default     = ""
+}
