@@ -46,38 +46,47 @@ jobs:
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
+          # 1. URL 정리 (Tenant ID 포함 필수)
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
-          BASE_DOMAIN=$(echo "$CLEAN_URL" | cut -d'/' -f1-3)
           
-          echo "Checking Authentication..."
+          echo "Downloading twistcli from: $CLEAN_URL"
           
-          # 1. 먼저 JSON 응답을 변수에 저장 (jq로 바로 넘기지 않음)
-          RESPONSE=$(curl -k -s -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$BASE_DOMAIN/api/v1/authenticate")
+          # 2. 토큰 생성 없이 바로 Basic Auth로 다운로드 시도
+          # SaaS에서는 이 방식이 가장 에러가 적습니다.
+          curl -k -s -L -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
+               "$CLEAN_URL/api/v1/util/twistcli?os=linux" -o twistcli
           
-          # 응답이 만약 "에러"라면 출력하고 중단
-          if [[ "$RESPONSE" == *"Invalid"* ]] || [[ "$RESPONSE" == *"Error"* ]] || [[ "$RESPONSE" == *"401"* ]]; then
-             echo "Auth failed at Base Domain. Response: $RESPONSE"
-             echo "Trying Tenant URL as fallback..."
-             RESPONSE=$(curl -k -s -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$CLEAN_URL/api/v1/authenticate")
-          fi
-
-          # 2. 최종 응답 확인
-          AUTH_TOKEN=$(echo "$RESPONSE" | jq -r .token // empty)
-
-          if [ -z "$AUTH_TOKEN" ] || [ "$AUTH_TOKEN" == "null" ]; then
-            echo "--- DEBUG INFO ---"
-            echo "URL Used: $CLEAN_URL"
-            echo "Full Server Response: $RESPONSE"
-            echo "------------------"
+          # 3. 파일 검증 (실패 시 내용 출력)
+          if [ ! -s twistcli ] || head -c 10 twistcli | grep -q "<html"; then
+            echo "Error: Download failed. Printing server response:"
+            cat twistcli
             exit 1
           fi
-
-          echo "Successfully obtained auth token."
-          curl -k -L -H "Authorization: Bearer $AUTH_TOKEN" \
-               "$CLEAN_URL/api/v1/util/twistcli?os=linux" --output twistcli
           
           chmod +x twistcli
-          ./twistcli --version
+          echo "twistcli 준비 완료."
+
+      - name: Build base Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_BASE_NAME }}:latest .
+
+      - name: Embed Defender into the image
+        env:
+          PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
+          PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
+          PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
+        run: |
+          CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
+          
+          # 공식 문서 권장 방식: --address, --user, --password를 직접 전달
+          ./twistcli app-embedded embed \
+            --address "$CLEAN_URL" \
+            --user "$PRISMA_ACCESS_KEY" \
+            --password "$PRISMA_SECRET_KEY" \
+            --app-id "${{ env.ECR_REPOSITORY }}" \
+            --data-folder "/tmp" \
+            --image-name "${{ env.IMAGE_BASE_NAME }}:latest" \
+            --output-image "${{ env.IMAGE_BASE_NAME }}:protected"
 
       # Step 2: 이미지 빌드 및 Defender 주입 (The "Embed" Step)
       - name: Build base Docker image
