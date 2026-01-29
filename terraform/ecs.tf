@@ -68,6 +68,8 @@ resource "aws_ecs_task_definition" "web_app" {
       # Dockerfile의 CMD ["nginx", "-g", "daemon off;"] 를 반영
       entryPoint = [
         "/var/lib/twistlock/fargate/defender",
+        "fargate",     # 추가 필수
+        "entrypoint",  # 추가 필수
         "nginx", 
         "-g", 
         "daemon off;"
@@ -84,8 +86,8 @@ resource "aws_ecs_task_definition" "web_app" {
       environment = [
         {
           name  = "WS_ADDRESS"
-          # 중요: 콘솔 주소를 wss:// 프로토콜로 변경해야 합니다.
-          value = replace(var.prisma_console_url, "https", "wss")
+          # 끝에 :443을 강제로 붙여줍니다. (매우 중요)
+          value = "${replace(var.prisma_console_url, "https", "wss")}:443"
         },
         {
           name  = "DEFENDER_TYPE"
@@ -143,7 +145,8 @@ resource "aws_ecs_service" "web_app" {
   # 서비스가 배포 또는 업데이트될 때 ALB 없이 바로 롤링 업데이트를 수행하기 위함
   # (이 설정이 없으면 Terraform apply 시 에러 발생 가능)
   lifecycle {
-    ignore_changes = [task_definition, desired_count]
+    # ignore_changes = [task_definition, desired_count] # 최신 이미지를 반영하려면 이 줄을 주석 처리하세요.
+    ignore_changes = [desired_count]
   }
 
   tags = {
