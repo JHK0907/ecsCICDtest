@@ -89,7 +89,8 @@ jobs:
             --output-image "${{ env.IMAGE_BASE_NAME }}:protected"
 
       # Step 2: 이미지 빌드 및 Defender 주입 (The "Embed" Step)
-      - name: Embed Defender into the image
+      # [1] twistcli가 원본 Dockerfile을 읽어서 수정본(Dockerfile.run)을 만듭니다.
+      - name: Embed Defender into Dockerfile
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
@@ -97,20 +98,20 @@ jobs:
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
           
-          echo "Embedding Fargate Defender..."
-          
-          # [중요 수정] 최신 twistcli는 이미지를 직접 수정할 때 'embed' 뒤에 옵션 없이 
-          # 이미지명을 바로 적거나 플래그가 다를 수 있습니다.
-          # 에러 메시지에 나온 도움말에 맞춰 'fargate'용으로 명시하는 것이 좋습니다.
-          
+          # 'Dockerfile'이라는 인자를 주면 자동으로 'Dockerfile.run'이 생성됩니다.
           ./twistcli app-embedded embed \
             --address "$CLEAN_URL" \
             --user "$PRISMA_ACCESS_KEY" \
             --password "$PRISMA_SECRET_KEY" \
             --app-id "${{ env.ECR_REPOSITORY }}" \
             --data-folder "/tmp" \
-            --output-image "${{ env.IMAGE_BASE_NAME }}:protected" \
-            "${{ env.IMAGE_BASE_NAME }}:latest"
+            Dockerfile
+
+      # [2] twistcli가 만들어준 'Dockerfile.run'을 사용하여 이미지를 빌드합니다.
+      - name: Build Protected Image using the generated Dockerfile
+        run: |
+          # 원본 'Dockerfile'이 아니라 'Dockerfile.run'을 지정(-f)하는 게 핵심입니다.
+          docker build -t ${{ env.IMAGE_BASE_NAME }}:protected -f Dockerfile.run .
 
       # Step 3: ECR 푸시 (Push Protected Image)
       - name: Tag and push protected image to ECR
