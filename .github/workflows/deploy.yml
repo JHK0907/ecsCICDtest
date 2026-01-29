@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: Build, Embed Defender, and Deploy to ECR
 
 on:
@@ -6,11 +5,8 @@ on:
     branches:
       - main
 
-# 환경 변수 설정
 env:
-  # terraform/variables.tf 와 일관성 유지
   AWS_REGION: "ap-northeast-2" 
-  # terraform/ecs.tf 에 정의된 리포지토리 이름 형식과 일치시킴
   ECR_REPOSITORY: "hkjung-tetris-web-repo" 
   IMAGE_BASE_NAME: "tetris-web"
 
@@ -19,7 +15,6 @@ jobs:
     name: Build, Embed, and Push
     runs-on: ubuntu-latest
     
-    # GitHub OIDC를 사용하여 AWS에 인증
     permissions:
       id-token: write 
       contents: read
@@ -31,7 +26,6 @@ jobs:
       - name: Configure AWS credentials from GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # IAM OIDC 설정 후 생성된 Role ARN을 GitHub Secret으로 등록하여 사용하세요.
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_FOR_GITHUB_ACTIONS }}
           aws-region: ${{ env.AWS_REGION }}
 
@@ -39,24 +33,19 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 1: GitHub Actions 환경 설정 (twistcli 다운로드)
+      # Step 1: twistcli 다운로드 및 준비
       - name: Download and prepare twistcli
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
-          # 1. URL 정리 (Tenant ID 포함 필수)
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
-          
           echo "Downloading twistcli from: $CLEAN_URL"
           
-          # 2. 토큰 생성 없이 바로 Basic Auth로 다운로드 시도
-          # SaaS에서는 이 방식이 가장 에러가 적습니다.
           curl -k -s -L -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
                "$CLEAN_URL/api/v1/util/twistcli?os=linux" -o twistcli
           
-          # 3. 파일 검증 (실패 시 내용 출력)
           if [ ! -s twistcli ] || head -c 10 twistcli | grep -q "<html"; then
             echo "Error: Download failed. Printing server response:"
             cat twistcli
@@ -66,30 +55,7 @@ jobs:
           chmod +x twistcli
           echo "twistcli 준비 완료."
 
-      - name: Build base Docker image
-        run: |
-          docker build -t ${{ env.IMAGE_BASE_NAME }}:latest .
-
-      - name: Embed Defender into the image
-        env:
-          PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
-          PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
-          PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
-        run: |
-          CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
-          
-          # 공식 문서 권장 방식: --address, --user, --password를 직접 전달
-          ./twistcli app-embedded embed \
-            --address "$CLEAN_URL" \
-            --user "$PRISMA_ACCESS_KEY" \
-            --password "$PRISMA_SECRET_KEY" \
-            --app-id "${{ env.ECR_REPOSITORY }}" \
-            --data-folder "/tmp" \
-            --image-name "${{ env.IMAGE_BASE_NAME }}:latest" \
-            --output-image "${{ env.IMAGE_BASE_NAME }}:protected"
-
-      # Step 2: 이미지 빌드 및 Defender 주입 (The "Embed" Step)
-      # [1] twistcli가 원본 Dockerfile을 읽어서 수정본(Dockerfile.run)을 만듭니다.
+      # Step 2: Dockerfile에 Defender 주입 (수정본 Dockerfile.run 생성)
       - name: Embed Defender into Dockerfile
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
@@ -98,7 +64,7 @@ jobs:
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
           
-          # 'Dockerfile'이라는 인자를 주면 자동으로 'Dockerfile.run'이 생성됩니다.
+          echo "Embedding Defender into Dockerfile..."
           ./twistcli app-embedded embed \
             --address "$CLEAN_URL" \
             --user "$PRISMA_ACCESS_KEY" \
@@ -106,25 +72,27 @@ jobs:
             --app-id "${{ env.ECR_REPOSITORY }}" \
             --data-folder "/tmp" \
             Dockerfile
+          
+          # 생성된 파일이 있는지 확인
+          if [ ! -f Dockerfile.run ]; then
+            echo "Error: Dockerfile.run was not created."
+            exit 1
+          fi
 
-      # [2] twistcli가 만들어준 'Dockerfile.run'을 사용하여 이미지를 빌드합니다.
+      # Step 3: 수정된 Dockerfile.run을 사용하여 이미지 빌드
       - name: Build Protected Image using the generated Dockerfile
         run: |
-          # 원본 'Dockerfile'이 아니라 'Dockerfile.run'을 지정(-f)하는 게 핵심입니다.
           docker build -t ${{ env.IMAGE_BASE_NAME }}:protected -f Dockerfile.run .
 
-      # Step 3: ECR 푸시 (Push Protected Image)
+      # Step 4: Tag and push protected image to ECR
       - name: Tag and push protected image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          # 이미지 태그 전략: 'protected-{commit-sha}' 및 'latest-protected'
+          
           docker tag ${{ env.IMAGE_BASE_NAME }}:protected $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH
           docker tag ${{ env.IMAGE_BASE_NAME }}:protected $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected
           
-          echo "Pushing image $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH"
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH
-          
-          echo "Pushing image $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected"
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected
