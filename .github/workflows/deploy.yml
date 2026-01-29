@@ -33,7 +33,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 1: twistcli 다운로드 및 준비
+      # Step 1: twistcli 다운로드
       - name: Download and prepare twistcli
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
@@ -41,19 +41,9 @@ jobs:
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
-          echo "Downloading twistcli from: $CLEAN_URL"
-          
           curl -k -s -L -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
                "$CLEAN_URL/api/v1/util/twistcli?os=linux" -o twistcli
-          
-          if [ ! -s twistcli ] || head -c 10 twistcli | grep -q "<html"; then
-            echo "Error: Download failed. Printing server response:"
-            cat twistcli
-            exit 1
-          fi
-          
           chmod +x twistcli
-          echo "twistcli 준비 완료."
 
       # Step 2: Embed Defender 및 2단계 압축 해제
       - name: Embed Defender and Extract
@@ -63,8 +53,6 @@ jobs:
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
-          
-          echo "1. Embedding Defender..."
           ./twistcli app-embedded embed \
             --address "$CLEAN_URL" \
             --user "$PRISMA_ACCESS_KEY" \
@@ -73,23 +61,21 @@ jobs:
             --data-folder "/tmp" \
             Dockerfile
           
-          echo "2. Unzipping first package..."
           ZIP_FILE=$(ls app_embedded_embed_*.zip)
           unzip -o "$ZIP_FILE"
-          
-          echo "3. Extracting defender binary from tar.gz..."
-          # zip 안에 들어있던 tar.gz를 풉니다.
           tar -xzvf twistlock_defender_app_embedded.tar.gz
           
-          # 4. [검증] 이제 진짜 defender가 있는지 확인
           if [ ! -f ./defender ]; then
             echo "Error: Still cannot find 'defender' binary!"
-            ls -R
             exit 1
           fi
-          
           chmod +x ./defender
-          echo "Defender binary is finally ready."
+
+      # Step 3: [누락되었던 단계] 주입된 결과물로 이미지 빌드
+      - name: Build Protected Image
+        run: |
+          # twistcli가 수정한 Dockerfile과 압축 해제된 defender 바이너리를 사용하여 빌드
+          docker build -t ${{ env.IMAGE_BASE_NAME }}:protected .
 
       # Step 4: Tag and push protected image to ECR
       - name: Tag and push protected image to ECR
