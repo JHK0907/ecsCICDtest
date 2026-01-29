@@ -89,26 +89,28 @@ jobs:
             --output-image "${{ env.IMAGE_BASE_NAME }}:protected"
 
       # Step 2: 이미지 빌드 및 Defender 주입 (The "Embed" Step)
-      - name: Build base Docker image
-        run: |
-          docker build -t ${{ env.IMAGE_BASE_NAME }}:latest .
-
-      - name: Embed Defender into the image using twistcli
+      - name: Embed Defender into the image
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
+          CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
+          
           echo "Embedding Fargate Defender..."
+          
+          # [중요 수정] 최신 twistcli는 이미지를 직접 수정할 때 'embed' 뒤에 옵션 없이 
+          # 이미지명을 바로 적거나 플래그가 다를 수 있습니다.
+          # 에러 메시지에 나온 도움말에 맞춰 'fargate'용으로 명시하는 것이 좋습니다.
+          
           ./twistcli app-embedded embed \
-            --app-id ${{ env.ECR_REPOSITORY }} \
-            --data-folder /tmp \
-            --image-name ${{ env.IMAGE_BASE_NAME }}:latest \
-            --output-image ${{ env.IMAGE_BASE_NAME }}:protected \
-            --address $PRISMA_CONSOLE_URL \
-            --user $PRISMA_ACCESS_KEY \
-            --password $PRISMA_SECRET_KEY
-          echo "Embedding complete. New image is ${{ env.IMAGE_BASE_NAME }}:protected"
+            --address "$CLEAN_URL" \
+            --user "$PRISMA_ACCESS_KEY" \
+            --password "$PRISMA_SECRET_KEY" \
+            --app-id "${{ env.ECR_REPOSITORY }}" \
+            --data-folder "/tmp" \
+            --output-image "${{ env.IMAGE_BASE_NAME }}:protected" \
+            "${{ env.IMAGE_BASE_NAME }}:latest"
 
       # Step 3: ECR 푸시 (Push Protected Image)
       - name: Tag and push protected image to ECR
