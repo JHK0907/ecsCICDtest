@@ -71,22 +71,22 @@ jobs:
           fi
           chmod +x ./defender
 
-      # Step 3: 주입된 결과물로 이미지 빌드 (강제성 부여)
+      # Step 3: Dockerfile 순서 교정 및 빌드
       - name: Build Protected Image
         run: |
-          # 1. twistcli가 만든 Dockerfile에 COPY 구문이 누락되었을 가능성에 대비하여 강제 삽입
-          # (이미 있다면 무시되고, 없다면 추가됩니다)
-          if ! grep -q "COPY defender" Dockerfile; then
-            echo "Manually adding COPY command to Dockerfile"
-            # 첫 번째 라인(FROM) 다음에 COPY 구문을 삽입합니다.
-            sed -i '2i COPY defender /var/lib/twistlock/fargate/defender' Dockerfile
-            sed -i '3i RUN chmod +x /var/lib/twistlock/fargate/defender' Dockerfile
-          fi
+          # 1. 기존에 잘못 삽입된 줄이 있다면 제거 (재시도 대비)
+          sed -i '/\/var\/lib\/twistlock\/fargate\/defender/d' Dockerfile
+          
+          # 2. 'FROM' 줄을 찾아서 그 바로 다음 줄(a)에 COPY와 RUN을 삽입합니다.
+          # twistcli가 만든 Dockerfile의 형식을 파괴하지 않기 위함입니다.
+          sed -i '/FROM/a COPY defender /var/lib/twistlock/fargate/defender' Dockerfile
+          sed -i '/COPY defender/a RUN chmod +x /var/lib/twistlock/fargate/defender' Dockerfile
 
-          # 2. Dockerfile 내용 확인 (디버깅용 - 로그에서 꼭 확인하세요)
+          # 3. Dockerfile 내용 최종 확인
+          echo "=== Final Dockerfile ==="
           cat Dockerfile
 
-          # 3. 빌드 실행
+          # 4. 빌드 실행
           docker build -t ${{ env.IMAGE_BASE_NAME }}:protected .
 
       # Step 4: Tag and push protected image to ECR
