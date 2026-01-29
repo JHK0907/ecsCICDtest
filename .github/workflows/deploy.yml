@@ -6,12 +6,9 @@ on:
     branches:
       - main
 
-# 환경 변수 설정
 env:
-  # terraform/variables.tf 와 일관성 유지
-  AWS_REGION: "ap-northeast-2" 
-  # terraform/ecs.tf 에 정의된 리포지토리 이름 형식과 일치시킴
-  ECR_REPOSITORY: "hkjung-tetris-web-repo" 
+  AWS_REGION: "ap-northeast-2"
+  ECR_REPOSITORY: "hkjung-tetris-web-repo"
   IMAGE_BASE_NAME: "tetris-web"
 
 jobs:
@@ -19,7 +16,6 @@ jobs:
     name: Build, Embed, and Push
     runs-on: ubuntu-latest
     
-    # GitHub OIDC를 사용하여 AWS에 인증
     permissions:
       id-token: write 
       contents: read
@@ -31,7 +27,6 @@ jobs:
       - name: Configure AWS credentials from GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # IAM OIDC 설정 후 생성된 Role ARN을 GitHub Secret으로 등록하여 사용하세요.
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_FOR_GITHUB_ACTIONS }}
           aws-region: ${{ env.AWS_REGION }}
 
@@ -39,31 +34,42 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 1: twistcli 다운로드 (Basic Auth 방식으로 수정 및 검증 로직 추가)
+      # Step 1: twistcli 다운로드 (Bearer 토큰 인증 방식으로 수정)
       - name: Download and prepare twistcli
         env:
+          # 중요: PRISMA_CONSOLE_URL Secret에는 반드시 테넌트 ID가 포함된 전체 경로를 입력해야 합니다.
+          # 예: https://asia-northeast1.cloud.twistlock.com/japan-1167210809
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
-          echo "Downloading twistcli using Basic Auth..."
-          # 중요: PRISMA_CONSOLE_URL은 "https://<region>.cloud.twistlock.com" 형식이어야 합니다.
+          echo "Downloading twistcli using Bearer Token Auth..."
           
-          # 1. 토큰 없이 직접 Basic Auth(-u)로 다운로드 (os=linux 파라미터 추가)
-          curl -k -L -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
-            "$PRISMA_CONSOLE_URL/api/v1/util/twistcli?os=linux" \
-            --output twistcli
-
-          # 2. 다운로드 결과 검증 (파일이 HTML 에러인지 실제 바이너리인지 확인)
-          if head -c 10 twistcli | grep -qi "<html"; then
-            echo "Error: Downloaded file is an HTML error page."
-            echo "Please check your PRISMA_CONSOLE_URL, PRISMA_ACCESS_KEY, and PRISMA_SECRET_KEY in GitHub Secrets."
-            echo "--- Downloaded Content ---"
-            cat twistcli
-            echo "--------------------------"
+          # 1. Access Key와 Secret Key로 인증하여 Bearer 토큰 발급
+          AUTH_TOKEN=$(curl -k -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
+                       "$PRISMA_CONSOLE_URL/api/v1/authenticate" | jq -r .token)
+          
+          if [ -z "$AUTH_TOKEN" ] || [ "$AUTH_TOKEN" == "null" ]; then
+            echo "Error: Failed to get auth token. Check credentials and PRISMA_CONSOLE_URL."
             exit 1
           fi
+          echo "Successfully obtained auth token."
+
+          # 2. 발급받은 토큰을 사용하여 twistcli 다운로드
+          curl -k -L --header "Authorization: Bearer $AUTH_TOKEN" \
+               "$PRISMA_CONSOLE_URL/api/v1/util/twistcli?os=linux" \
+               --output twistcli
           
+          # 3. 다운로드 검증
+          file_type=$(file twistcli)
+          if [[ ! "$file_type" =~ "executable" ]]; then
+              echo "Error: Downloaded file is not an executable. It might be an error page."
+              echo "--- Downloaded Content ---"
+              cat twistcli
+              echo "--------------------------"
+              exit 1
+          fi
+
           echo "twistcli binary downloaded successfully."
           chmod +x twistcli
           ./twistcli --version
@@ -80,7 +86,6 @@ jobs:
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
           echo "Embedding Fargate Defender..."
-          # twistcli embed 명령어는 --user, --password 파라미터를 사용합니다.
           ./twistcli app-embedded embed \
             --app-id ${{ env.ECR_REPOSITORY }} \
             --data-folder /tmp \
@@ -97,12 +102,8 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          # 이미지 태그 전략: 'protected-{commit-sha}' 및 'latest-protected'
           docker tag ${{ env.IMAGE_BASE_NAME }}:protected $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH
           docker tag ${{ env.IMAGE_BASE_NAME }}:protected $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected
           
-          echo "Pushing image $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH"
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:protected-$COMMIT_HASH
-          
-          echo "Pushing image $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected"
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest-protected
