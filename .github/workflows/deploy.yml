@@ -39,26 +39,36 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 1: GitHub Actions 환경 설정 (twistcli 다운로드)
+      # Step 1: twistcli 다운로드 (Basic Auth 방식으로 수정 및 검증 로직 추가)
       - name: Download and prepare twistcli
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
-          echo "Downloading twistcli from Prisma Cloud Console..."
-          # 콘솔 URL에서 twistcli 다운로드 (linux 버전)
-          # 먼저 인증 토큰을 받고, 그 토큰을 사용하여 twistcli를 다운로드합니다.
-          AUTH_TOKEN=$(curl -k -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$PRISMA_CONSOLE_URL/api/v1/authenticate" | jq -r .token) 
+          echo "Downloading twistcli using Basic Auth..."
+          # 중요: PRISMA_CONSOLE_URL은 "https://<region>.cloud.twistlock.com" 형식이어야 합니다.
           
-          curl -k --header "Authorization: Bearer $AUTH_TOKEN" \
-               "$PRISMA_CONSOLE_URL/api/v1/util/twistcli" --output twistcli
+          # 1. 토큰 없이 직접 Basic Auth(-u)로 다운로드 (os=linux 파라미터 추가)
+          curl -k -L -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
+            "$PRISMA_CONSOLE_URL/api/v1/util/twistcli?os=linux" \
+            --output twistcli
+
+          # 2. 다운로드 결과 검증 (파일이 HTML 에러인지 실제 바이너리인지 확인)
+          if head -c 10 twistcli | grep -qi "<html"; then
+            echo "Error: Downloaded file is an HTML error page."
+            echo "Please check your PRISMA_CONSOLE_URL, PRISMA_ACCESS_KEY, and PRISMA_SECRET_KEY in GitHub Secrets."
+            echo "--- Downloaded Content ---"
+            cat twistcli
+            echo "--------------------------"
+            exit 1
+          fi
           
+          echo "twistcli binary downloaded successfully."
           chmod +x twistcli
-          echo "twistcli downloaded and is executable."
           ./twistcli --version
 
-      # Step 2: 이미지 빌드 및 Defender 주입 (The "Embed" Step)
+      # Step 2: 이미지 빌드 및 Defender 주입
       - name: Build base Docker image
         run: |
           docker build -t ${{ env.IMAGE_BASE_NAME }}:latest .
@@ -70,6 +80,7 @@ jobs:
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
           echo "Embedding Fargate Defender..."
+          # twistcli embed 명령어는 --user, --password 파라미터를 사용합니다.
           ./twistcli app-embedded embed \
             --app-id ${{ env.ECR_REPOSITORY }} \
             --data-folder /tmp \
