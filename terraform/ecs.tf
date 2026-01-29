@@ -66,14 +66,14 @@ resource "aws_ecs_task_definition" "web_app" {
       
       # EntryPoint 변경: Defender가 원래 EntryPoint를 래핑
       # Dockerfile의 CMD ["nginx", "-g", "daemon off;"] 를 반영
+      # ecs.tf 수정 (주석 해제 및 경로 변경)
       entryPoint = [
-        "/var/lib/twistlock/fargate/defender",
-        "fargate",     # 추가 필수
-        "entrypoint",  # 추가 필수
-        "nginx", 
-        "-g", 
-        "daemon off;"
-      ]
+      "/tmp/defender",
+      "app-embedded",
+      "nginx",
+      "-g",
+      "daemon off;"
+]
 
       # Linux Parameters: SYS_PTRACE 기능 추가
       linuxParameters = {
@@ -83,16 +83,12 @@ resource "aws_ecs_task_definition" "web_app" {
       }
 
       # 환경 변수: Prisma Defender 필수 환경 변수 주입
+      # ecs.tf 수정
       environment = [
-        {
-          name  = "WS_ADDRESS"
-          # 끝에 :443을 강제로 붙여줍니다. (매우 중요)
-          value = "${replace(var.prisma_console_url, "https", "wss")}:443"
-        },
-        {
-          name  = "DEFENDER_TYPE"
-          value = "fargate"
-        }
+      {
+        name  = "DEFENDER_TYPE"
+        value = "appEmbedded"  # fargate 대신 appEmbedded 입력
+      }
       ]
 
       logConfiguration = {
