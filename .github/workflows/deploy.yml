@@ -55,7 +55,7 @@ jobs:
           chmod +x twistcli
           echo "twistcli 준비 완료."
 
-      # Step 2: Embed Defender 및 파일 추출 (경로 확인 강화)
+      # Step 2: Embed Defender 및 2단계 압축 해제
       - name: Embed Defender and Extract
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
@@ -64,7 +64,7 @@ jobs:
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
           
-          echo "Embedding Defender..."
+          echo "1. Embedding Defender..."
           ./twistcli app-embedded embed \
             --address "$CLEAN_URL" \
             --user "$PRISMA_ACCESS_KEY" \
@@ -73,29 +73,23 @@ jobs:
             --data-folder "/tmp" \
             Dockerfile
           
-          # 1. 생성된 zip 파일 찾기 및 압축 해제
+          echo "2. Unzipping first package..."
           ZIP_FILE=$(ls app_embedded_embed_*.zip)
           unzip -o "$ZIP_FILE"
           
-          # 2. [매우 중요] 현재 폴더에 defender 파일이 있는지 확인
+          echo "3. Extracting defender binary from tar.gz..."
+          # zip 안에 들어있던 tar.gz를 풉니다.
+          tar -xzvf twistlock_defender_app_embedded.tar.gz
+          
+          # 4. [검증] 이제 진짜 defender가 있는지 확인
           if [ ! -f ./defender ]; then
-            echo "Error: 'defender' binary not found after unzip!"
+            echo "Error: Still cannot find 'defender' binary!"
             ls -R
             exit 1
           fi
           
-          # 3. 바이너리에 실행 권한 부여
           chmod +x ./defender
-          echo "Defender binary is ready."
-
-      # Step 3: 빌드 컨텍스트 확인하며 이미지 빌드
-      - name: Build Protected Image
-        run: |
-          # zip을 풀면 'Dockerfile'이 덮어씌워졌을 것입니다. 
-          # 해당 Dockerfile 안에 'COPY defender ...' 문구가 있는지 확인해봅니다.
-          grep "COPY defender" Dockerfile || echo "Warning: COPY defender command not found in Dockerfile"
-          
-          docker build -t ${{ env.IMAGE_BASE_NAME }}:protected .
+          echo "Defender binary is finally ready."
 
       # Step 4: Tag and push protected image to ECR
       - name: Tag and push protected image to ECR
