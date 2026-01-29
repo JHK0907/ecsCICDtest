@@ -7,5 +7,5 @@ COPY src/ /usr/share/nginx/html/
 # 80 포트 오픈
 EXPOSE 80
 
-# nginx 포그라운드 실행
-CMD ["nginx", "-g", "daemon off;"]
+# [수정] CMD 대신 ENTRYPOINT를 사용해야 twistcli가 인식합니다.
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
