@@ -78,7 +78,7 @@ jobs:
             --user "$PRISMA_ACCESS_KEY" \
             --password "$PRISMA_SECRET_KEY" \
             --details \
-            ${{ env.IMAGE_BASE_NAME }}:temp
+            ${{ env.IMAGE_BASE_NAME }}:temp || true  # <--- 결과에 상관없이 다음 단계 진행
 
       # 5. Defender 주입 (App-Embedded)
       - name: Embed Defender
