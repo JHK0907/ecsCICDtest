@@ -55,8 +55,8 @@ jobs:
           chmod +x twistcli
           echo "twistcli 준비 완료."
 
-      # Step 2: Dockerfile에 Defender 주입 (수정본 Dockerfile.run 생성)
-      - name: Embed Defender into Dockerfile
+      # Step 2: Dockerfile에 Defender 주입 및 압축 해제
+      - name: Embed Defender and Extract
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
@@ -64,7 +64,7 @@ jobs:
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
           
-          echo "Embedding Defender into Dockerfile..."
+          echo "Embedding Defender..."
           ./twistcli app-embedded embed \
             --address "$CLEAN_URL" \
             --user "$PRISMA_ACCESS_KEY" \
@@ -73,16 +73,24 @@ jobs:
             --data-folder "/tmp" \
             Dockerfile
           
-          # 생성된 파일이 있는지 확인
-          if [ ! -f Dockerfile.run ]; then
-            echo "Error: Dockerfile.run was not created."
-            exit 1
-          fi
+          # 생성된 zip 파일명 확인 (패턴 매칭 사용)
+          ZIP_FILE=$(ls app_embedded_embed_*.zip)
+          echo "Extracting $ZIP_FILE..."
+          
+          # unzip 설치 확인 후 압축 해제
+          sudo apt-get install -y unzip
+          unzip -o "$ZIP_FILE"
+          
+          # 압축을 풀면 보통 'Dockerfile'이라는 이름으로 덮어써지거나 
+          # 'Dockerfile.run' 등이 생깁니다. 파일 목록 확인용
+          ls -R
 
-      # Step 3: 수정된 Dockerfile.run을 사용하여 이미지 빌드
-      - name: Build Protected Image using the generated Dockerfile
+      # Step 3: 주입된 결과물로 이미지 빌드
+      - name: Build Protected Image
         run: |
-          docker build -t ${{ env.IMAGE_BASE_NAME }}:protected -f Dockerfile.run .
+          # zip을 풀면 보통 보안 설정이 추가된 'Dockerfile'이 현재 폴더에 생성됩니다.
+          # 만약 파일명이 Dockerfile 그대로라면 -f 옵션 없이 빌드하면 됩니다.
+          docker build -t ${{ env.IMAGE_BASE_NAME }}:protected .
 
       # Step 4: Tag and push protected image to ECR
       - name: Tag and push protected image to ECR
