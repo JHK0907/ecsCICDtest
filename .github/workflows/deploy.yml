@@ -46,30 +46,29 @@ jobs:
           PRISMA_ACCESS_KEY: ${{ secrets.PRISMA_ACCESS_KEY }}
           PRISMA_SECRET_KEY: ${{ secrets.PRISMA_SECRET_KEY }}
         run: |
-          # 1. URL 정리
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
-          
-          # 2. [수정 포인트] SaaS 인증은 보통 테넌트 ID가 포함된 경로가 아닌 
-          # 베이스 도메인의 /api/v1/authenticate 를 사용해야 할 수도 있습니다.
-          # 하지만 사용자가 준 공식 curl의 도메인을 따라 시도해봅니다.
-          
-          echo "Trying authentication..."
-          # 만약 CLEAN_URL에 테넌트 ID가 포함되어 있다면, 베이스 도메인만 추출해봅니다.
           BASE_DOMAIN=$(echo "$CLEAN_URL" | cut -d'/' -f1-3)
           
-          # 우선 CLEAN_URL 기반으로 시도하고, 안되면 BASE_DOMAIN으로 시도하는 로직
-          AUTH_TOKEN=$(curl -k -s -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
-                       "$CLEAN_URL/api/v1/authenticate" | jq -r .token)
+          echo "Checking Authentication..."
           
-          if [ "$AUTH_TOKEN" == "null" ] || [ -z "$AUTH_TOKEN" ]; then
-            echo "Failed with Tenant URL, trying Base Domain URL..."
-            AUTH_TOKEN=$(curl -k -s -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" \
-                         "$BASE_DOMAIN/api/v1/authenticate" | jq -r .token)
+          # 1. 먼저 JSON 응답을 변수에 저장 (jq로 바로 넘기지 않음)
+          RESPONSE=$(curl -k -s -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$BASE_DOMAIN/api/v1/authenticate")
+          
+          # 응답이 만약 "에러"라면 출력하고 중단
+          if [[ "$RESPONSE" == *"Invalid"* ]] || [[ "$RESPONSE" == *"Error"* ]] || [[ "$RESPONSE" == *"401"* ]]; then
+             echo "Auth failed at Base Domain. Response: $RESPONSE"
+             echo "Trying Tenant URL as fallback..."
+             RESPONSE=$(curl -k -s -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$CLEAN_URL/api/v1/authenticate")
           fi
 
-          if [ "$AUTH_TOKEN" == "null" ] || [ -z "$AUTH_TOKEN" ]; then
-            echo "Error: Still failed to get token. Printing response for debug:"
-            curl -k -i -u "$PRISMA_ACCESS_KEY:$PRISMA_SECRET_KEY" "$CLEAN_URL/api/v1/authenticate"
+          # 2. 최종 응답 확인
+          AUTH_TOKEN=$(echo "$RESPONSE" | jq -r .token // empty)
+
+          if [ -z "$AUTH_TOKEN" ] || [ "$AUTH_TOKEN" == "null" ]; then
+            echo "--- DEBUG INFO ---"
+            echo "URL Used: $CLEAN_URL"
+            echo "Full Server Response: $RESPONSE"
+            echo "------------------"
             exit 1
           fi
 
