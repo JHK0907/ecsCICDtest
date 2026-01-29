@@ -55,7 +55,7 @@ jobs:
           chmod +x twistcli
           echo "twistcli 준비 완료."
 
-      # Step 2: Embed Defender 및 파일 추출
+      # Step 2: Embed Defender 및 파일 추출 (경로 확인 강화)
       - name: Embed Defender and Extract
         env:
           PRISMA_CONSOLE_URL: ${{ secrets.PRISMA_CONSOLE_URL }}
@@ -64,7 +64,7 @@ jobs:
         run: |
           CLEAN_URL=$(echo "$PRISMA_CONSOLE_URL" | sed 's:/*$::')
           
-          # 1. Embed 실행 (zip 파일 생성됨)
+          echo "Embedding Defender..."
           ./twistcli app-embedded embed \
             --address "$CLEAN_URL" \
             --user "$PRISMA_ACCESS_KEY" \
@@ -73,20 +73,28 @@ jobs:
             --data-folder "/tmp" \
             Dockerfile
           
-          # 2. 생성된 zip 파일명 찾기 및 압축 해제
+          # 1. 생성된 zip 파일 찾기 및 압축 해제
           ZIP_FILE=$(ls app_embedded_embed_*.zip)
           unzip -o "$ZIP_FILE"
           
-          # 3. 중요: 파일이 어디에 생겼는지 로그로 확인 (디버깅용)
-          echo "Checking extracted files..."
-          ls -R
+          # 2. [매우 중요] 현재 폴더에 defender 파일이 있는지 확인
+          if [ ! -f ./defender ]; then
+            echo "Error: 'defender' binary not found after unzip!"
+            ls -R
+            exit 1
+          fi
+          
+          # 3. 바이너리에 실행 권한 부여
+          chmod +x ./defender
+          echo "Defender binary is ready."
 
-      # Step 3: 주입된 결과물로 이미지 빌드
+      # Step 3: 빌드 컨텍스트 확인하며 이미지 빌드
       - name: Build Protected Image
         run: |
-          # twistcli가 생성한 수정된 Dockerfile 이름이 보통 'Dockerfile'로 덮어씌워지거나 
-          # 별도 파일로 생깁니다. ls -R 결과를 보고 이름을 맞춰야 합니다.
-          # 만약 zip 안에 'Dockerfile'이라는 이름으로 들어있었다면 아래 명령어가 맞습니다.
+          # zip을 풀면 'Dockerfile'이 덮어씌워졌을 것입니다. 
+          # 해당 Dockerfile 안에 'COPY defender ...' 문구가 있는지 확인해봅니다.
+          grep "COPY defender" Dockerfile || echo "Warning: COPY defender command not found in Dockerfile"
+          
           docker build -t ${{ env.IMAGE_BASE_NAME }}:protected .
 
       # Step 4: Tag and push protected image to ECR
