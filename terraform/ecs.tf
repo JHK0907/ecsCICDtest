@@ -157,7 +157,10 @@ resource "aws_ecs_service" "web_app" {
 # 6. Docker 이미지를 저장할 ECR(Elastic Container Registry) 생성
 resource "aws_ecr_repository" "web_app" {
   name                 = "${var.name_prefix}-${var.project_name}-repo"
-  image_tag_mutability = "IMMUTABLE"
+  
+  # [수정] IMMUTABLE을 MUTABLE로 변경합니다. 
+  # 이렇게 해야 Actions에서 동일한 태그(:latest-protected)로 계속 업데이트할 수 있습니다.
+  image_tag_mutability = "MUTABLE" 
 
   image_scanning_configuration {
     scan_on_push = true
